@@ -1,0 +1,10 @@
+wandb
+__pycache__
+*.log
+
+.vscode/**
+.DS_Store
+**/models/**
+data/**
+**/logs/**
+.venv
