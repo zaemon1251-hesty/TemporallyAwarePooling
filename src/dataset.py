@@ -853,7 +853,9 @@ class CommentaryClipsForDiffEstimation(Dataset):
         self,
         path,
         split="train",
-        target_col="target_frameid",
+        prev_ts_col="target_frameid",
+        ts_col="target_frameid",
+        label_col="category",
     ):
         assert isinstance(split, str), "split should be a string"
         assert split in [
@@ -864,7 +866,7 @@ class CommentaryClipsForDiffEstimation(Dataset):
 
         self.path = path
 
-        label_template = "commentary_dataset/{split}.csv"
+        label_template = "{split}.csv"
 
         self.label_df = pd.read_csv(
             os.path.join(self.path, label_template.format(split=split))
@@ -888,21 +890,22 @@ class CommentaryClipsForDiffEstimation(Dataset):
 
         for game in tqdm(self.listGames):
             # filter labels by game
-            label_df_half1_by_game: pd.DataFrame = self.label_df[
-                self.label_df_half1["game"] == game
+            label_df_game: pd.DataFrame = self.label_df[
+                self.label_df["game"] == game
             ].sort_values("start")
+            label_df_game.reset_index(inplace=True, drop=True)
 
-            # 直前の発話開始フレームを self.prev_dataに入れて
-            # 現在の発話開始フレーム, class を self.current_dataに入れる
-            for i, row in enumerate(label_df_half1_by_game.itertuples()):
+            # 直前の発話開始フレームを self.prev_data に入れて
+            # 現在の発話開始フレーム, class を self.current_data に入れる
+            for i, row in label_df_game.iterrows():
                 # 最初の行は無視
-                if i == 0:
+                if i < 1:
                     continue
-                previous_frameid = label_df_half1_by_game.iloc[i - 1][target_col]
-                feature = row[target_col]
-                target_label = row.target_label
+                previous_ts = label_df_game.iloc[i - 1][prev_ts_col]
+                target_ts = row[ts_col]
+                target_label = row[label_col]
 
-                self.data.append((game, previous_frameid, feature, target_label))
+                self.data.append((game, previous_ts, target_ts, target_label))
 
     def __getitem__(self, index):
         """
@@ -912,7 +915,7 @@ class CommentaryClipsForDiffEstimation(Dataset):
             end_time[index-1] (int): 直前の発話開始時間
             start_time[index] (int): 現在の発話開始時間
         """
-        # self.data[index] = [game_name, previous_frameid, target_frameid, target_label]
+        # self.data[index] = [game, previous_ts, target_ts, target_label]
         # game_nameは使わない
         return self.data[index][1:]
 
@@ -926,90 +929,36 @@ if __name__ == "__main__":
 
     torch.manual_seed(0)
     np.random.seed(0)
-    root = "/Users/heste/workspace/soccernet/sn-script"
+    root = ""
 
-    # dataset_Train = SoccerNetCaptions(
-    #     path=root,
-    #     features="baidu_soccer_embeddings.npy",
-    #     split=["train"],
-    #     version=2,
-    #     framerate=2,
-    #     window_size=15,
-    # )
-    # print(f"{dataset_Train.vocab_size=}")
-
-    # dataset_Test = SoccerNetCaptions(
-    #     path=root,
-    #     features="baidu_soccer_embeddings.npy",
-    #     split=["test"],
-    #     version=2,
-    #     framerate=2,
-    #     window_size=15,
-    # )
-    # print(f"{dataset_Test.vocab_size=}")
-    # test_loader = torch.utils.data.DataLoader(
-    #     dataset_Test,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     pin_memory=True,
-    #     collate_fn=collate_fn_padd,
-    # )
-    # batch = next(iter(test_loader))
-    # (feats, caption), lengths, mask, caption_or, idx = batch
-    # print(feats, caption)
-    # print(test_loader.dataset.detokenize([55, 22, 33, 2]))
-    # print(idx)
-    dataset_Test = CommentaryClipsForDiffEstimation(
+    dataset_Train = SoccerNetCaptions(
         path=root,
-        split="test",
+        features="baidu_soccer_embeddings.npy",
+        split=["train"],
+        version=2,
+        framerate=2,
+        window_size=15,
     )
+    print(f"{dataset_Train.vocab_size=}")
 
-    def predict_diff_and_label(previous_frameid):
-        mean_silence_sec = 4.9  # 平均的な発話間隔
-        fps = 1
-        label_space = [1, 2]  # 映像の説明, 付加的情報
-        label_prob = [0.87, 0.13]  # 全体のラベル割合分布
-
-        next_frameid = previous_frameid + int(mean_silence_sec * fps)
-        next_label = np.random.choice(label_space, p=label_prob)
-        return (next_frameid, next_label)
-
-    def evaluate_diff_and_label(dataset, predict_model: Callable):
-        result_dict = {
-            "diff": [],
-            "label_same": [],
-            "predict_label": [],
-            "target_label": [],
-        }
-        for previous_frameid, target_frameid, target_label in dataset:
-            next_frameid, predict_label = predict_model(previous_frameid)
-            diff = abs(next_frameid - target_frameid)
-            label_result = 1 if predict_label == target_label else 0
-            result_dict["diff"].append(int(diff))
-            result_dict["label_same"].append(int(label_result))
-            result_dict["predict_label"].append(int(predict_label))
-            result_dict["target_label"].append(int(target_label))
-
-        # save result dict json
-        with open(
-            "/Users/heste/workspace/soccernet/sn-script/database/misc/result.json", "w"
-        ) as f:
-            json.dump(result_dict, f, ensure_ascii=False, indent=4)
-
-        # calculate diff average
-        diff_average = np.mean(result_dict["diff"])
-        print(f"diff_average: {diff_average}")
-
-        # calculate label accuracy
-        label_accuracy = np.mean(result_dict["label_same"])
-        print(f"label_accuracy: {label_accuracy}")
-
-        # confusion matrix
-        matrix = confusion_matrix(
-            result_dict["target_label"], result_dict["predict_label"]
-        )
-        print(f"confusion matrix: {matrix}")
-
-        return
-
-    evaluate_diff_and_label(dataset_Test, predict_diff_and_label)
+    dataset_Test = SoccerNetCaptions(
+        path=root,
+        features="baidu_soccer_embeddings.npy",
+        split=["test"],
+        version=2,
+        framerate=2,
+        window_size=15,
+    )
+    print(f"{dataset_Test.vocab_size=}")
+    test_loader = torch.utils.data.DataLoader(
+        dataset_Test,
+        batch_size=1,
+        shuffle=False,
+        pin_memory=True,
+        collate_fn=collate_fn_padd,
+    )
+    batch = next(iter(test_loader))
+    (feats, caption), lengths, mask, caption_or, idx = batch
+    print(feats, caption)
+    print(test_loader.dataset.detokenize([55, 22, 33, 2]))
+    print(idx)
