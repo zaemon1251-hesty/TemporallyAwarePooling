@@ -76,6 +76,7 @@ if __name__ == "__main__":
                 continue
 
             next_frameid, predict_label = predict_model(previous_frameid)
+
             diff = abs(next_frameid - target_frameid)
             label_result = 1 if predict_label == target_label else 0
 

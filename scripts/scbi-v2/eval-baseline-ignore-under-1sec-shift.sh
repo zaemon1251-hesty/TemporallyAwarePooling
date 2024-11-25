@@ -19,13 +19,13 @@ label_f1: 0.810
 COMMENTOUT
 
 echo "timing_algo: lognorm"
-python src/main_v2.py --path $path --timing_algo lognorm --ignore_under_1sec --lognorm_params '{"shape": 0.8684, "loc": 0.0, "scale": 3.7154}'
-# diff_average: 3.7224
+python src/main_v2.py --path $path --timing_algo lognorm --ignore_under_1sec --lognorm_params '{"shape": 1.4902, "loc": 1.0, "scale": 1.9815}'
+# diff_average: 5.4240
 
 echo "timing_algo: gamma"
-python src/main_v2.py --path $path --timing_algo gamma --ignore_under_1sec --gamma_params '{"shape": 1.3725, "loc": 0.0, "scale": 4.0652}'
-# diff_average: 3.9801
+python src/main_v2.py --path $path --timing_algo gamma --ignore_under_1sec --gamma_params '{"shape": 0.7183, "loc": 1.0, "scale": 6.3800}'
+# diff_average: 3.8224
 
 echo "timing_algo: expon"
-python src/main_v2.py --path $path --timing_algo expon --ignore_under_1sec --expon_params '{"loc": 0.0, "scale": 5.5794}'
-# diff_average: 4.1686
+python src/main_v2.py --path $path --timing_algo expon --ignore_under_1sec --expon_params '{"loc": 1.0, "scale": 4.5825}'
+# diff_average: 3.5467
