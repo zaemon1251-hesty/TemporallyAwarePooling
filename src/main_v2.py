@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
             next_frameid, predict_label = predict_model(previous_frameid)
 
-            diff = abs(next_frameid - target_frameid)
+            diff = (next_frameid - target_frameid) ** 2
             label_result = 1 if predict_label == target_label else 0
 
             result_dict["diff"].append(int(diff))
