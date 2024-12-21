@@ -9,6 +9,7 @@ import torch
 import logging
 import json
 
+from dataclasses import dataclass
 from collections import Counter
 from torchtext.vocab import vocab
 
@@ -904,20 +905,23 @@ class CommentaryClipsForDiffEstimation(Dataset):
                 previous_ts = label_df_game.iloc[i - 1][prev_ts_col]
                 target_ts = row[ts_col]
                 target_label = row[label_col]
+                half = row["half"]
 
-                self.data.append((game, previous_ts, target_ts, target_label))
+                self.data.append((game, half, previous_ts, target_ts, target_label))
 
     def __getitem__(self, index):
         """
         Args:
             index (int): Index
         Returns:
-            end_time[index-1] (int): 直前の発話開始時間
-            start_time[index] (int): 現在の発話開始時間
+            game (str): game 名
+            half (int): 1 or 2
+            previous_ts[index-1] (int): 直前の発話開始時間
+            target_ts[index] (int): 現在(ターゲット)の発話開始時間
+            target_label[index] (int): 現在(ターゲット)の発話クラス
         """
-        # self.data[index] = [game, previous_ts, target_ts, target_label]
-        # game_nameは使わない
-        return self.data[index][1:]
+        # self.data[index] = [game, half, previous_ts, target_ts, target_label]
+        return self.data[index]
 
     def __len__(self):
         return len(self.data)
