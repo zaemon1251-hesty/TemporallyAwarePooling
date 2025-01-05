@@ -25,8 +25,12 @@ class MainV2Argument(Tap):
     gamma_params: dict = {"shape": 0.3283, "loc": 0.0, "scale": 6.4844}
     expon_params: dict = {"loc": 0.0, "scale": 2.1289}
     ignore_under_1sec: bool = False
+    empirical_dist_csv: str = (
+        "/Users/heste/workspace/soccernet/sn-caption/Benchmarks/TemporallyAwarePooling/data/silence_distribution_over_1sec.csv"
+    )
 
     # ラベル生成
+    default_rate = 0.18
     label_algo: str = "constant"
     action_spotting_label_csv: str = (
         "/Users/heste/workspace/soccernet/sn-script/database/misc/soccernet_spotting_labels.csv"
@@ -90,7 +94,10 @@ class SpottingModel:
     def __init__(self, args: MainV2Argument):
         self.args = args
         self.label_space = [0, 1]  # 映像の説明, 付加的情報
-        self.label_prob = [0.82, 0.18]  # 全体のラベル割合分布
+        self.label_prob = [
+            1 - args.default_rate,
+            args.default_rate,
+        ]  # 全体のラベル割合分布
 
         self.mean_silence_sec = args.mean_silence_sec
         self.timing_algo = args.timing_algo
@@ -105,6 +112,10 @@ class SpottingModel:
         self.lognorm_params = args.lognorm_params
         self.gamma_params = args.gamma_params
         self.expon_params = args.expon_params
+
+        if args.timing_algo == "empirical":
+            self.silence_dist = pl.read_csv(args.empirical_dist_csv)
+            assert {"duration", "p"}.issubset(self.silence_dist.columns)
 
     def __call__(self, previous_t, game=None, half=None, target_ts=None):
         if target_ts is not None:
@@ -144,6 +155,12 @@ class SpottingModel:
                 )
                 + previous_t
             )
+        elif self.timing_algo == "empirical":
+            delta_t = np.random.choice(
+                self.silence_dist["duration"].to_numpy(),
+                p=self.silence_dist["p"].to_numpy(),
+            )
+            next_ts = previous_t + delta_t
         return next_ts
 
     def _next_label(self, game, half, next_t):
@@ -158,8 +175,10 @@ class SpottingModel:
             label_result = self.action_df.filter(
                 (self.action_df["game"] == game)
                 & (self.action_df["half"] == half)
-                & (self.action_df["time"] <= next_t + self.action_window_size)
-                & (self.action_df["time"] >= next_t - self.action_window_size)
+                & (
+                    self.action_df["time"] <= next_t + self.action_window_size * 0
+                )  # 発話タイミングの未来のアクションは考慮しない
+                & (self.action_df["time"] >= next_t - self.action_window_size * 1)
             )
 
             if len(label_result) == 0:
@@ -187,6 +206,8 @@ class SpottingModel:
                     # 付加的情報の割合が高い(アクション,前後)場合、付加的情報とする
                     if args.addinfo_force and addinfo_rate > 0.18:
                         addinfo_rate = 1.0
+                    elif args.addinfo_force and addinfo_rate <= 0.18:
+                        addinfo_rate = 0.0
                     label_prob = [1 - addinfo_rate, addinfo_rate]
 
             # ラベルを生成
@@ -200,6 +221,7 @@ def evaluate_diff_and_label(dataset, predict_model: Callable):
             "predict_ts": [],
             "target_ts": [],
             "predict_label": [],
+            "predict_label_w_gold_timing": [],
             "target_label": [],
             "diff": [],
         },
@@ -211,11 +233,18 @@ def evaluate_diff_and_label(dataset, predict_model: Callable):
 
         predict_ts, predict_label = predict_model(previous_ts, game, half)
 
+        _, predict_label_w_gold_timing = predict_model(
+            previous_ts, game, half, target_ts=target_ts
+        )
+
         diff = (predict_ts - target_ts) ** 2
 
         result_dict["metadata"]["predict_ts"].append(predict_ts)
         result_dict["metadata"]["target_ts"].append(target_ts)
         result_dict["metadata"]["predict_label"].append(int(predict_label))
+        result_dict["metadata"]["predict_label_w_gold_timing"].append(
+            int(predict_label_w_gold_timing)
+        )
         result_dict["metadata"]["target_label"].append(int(target_label))
         result_dict["metadata"]["diff"].append(int(diff))
 
@@ -241,9 +270,26 @@ def evaluate_diff_and_label(dataset, predict_model: Callable):
     print(f"diff_average: {diff_average}")
 
     # label: confusion matrix
+    print("label evaluation")
     tn, fp, fn, tp = confusion_matrix(
         result_dict["metadata"]["target_label"],
         result_dict["metadata"]["predict_label"],
+    ).ravel()
+    print(f"confusion matrix: {tn=} {fp=} {fn=} {tp=}")
+    ## calculate label F1
+    pr = tp / (tp + fp)
+    re = tp / (tp + fn)
+    f1_score = 2 * pr * re / (pr + re)
+    print(f"label_accuracy: {(tp + tn) / (tp + tn + fp + fn):.3%}")
+    print(f"label_precision: {pr:.3%}")
+    print(f"label_recall: {re:.3%}")
+    print(f"label_f1: {f1_score:.3%}")
+
+    # label w/ gold timing: confusion matrix
+    print("label w/ gold timing evaluation")
+    tn, fp, fn, tp = confusion_matrix(
+        result_dict["metadata"]["target_label"],
+        result_dict["metadata"]["predict_label_w_gold_timing"],
     ).ravel()
     print(f"confusion matrix: {tn=} {fp=} {fn=} {tp=}")
     ## calculate label F1

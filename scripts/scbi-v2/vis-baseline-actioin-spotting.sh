@@ -8,8 +8,9 @@ echo "label_algo: action_spotting,Separate former and latter,Addinfo force"
 python src/main_v2.py --split valid --path $path --ignore_under_1sec  \
     --seed 100 \
     --label_algo action_spotting --action_window_size 15 \
-    --timing_algo expon --expon_params '{"loc": 1.0, "scale": 4.5825}' \
+    --timing_algo empirical \
     --action_rate_csv "/Users/heste/workspace/soccernet/sn-caption/Benchmarks/TemporallyAwarePooling/data/Additional_Info_Ratios__Before_and_After.csv" \
+    --addinfo_force
 
 
 << COMMENTOUT
