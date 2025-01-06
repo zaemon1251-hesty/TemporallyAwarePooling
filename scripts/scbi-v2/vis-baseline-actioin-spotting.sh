@@ -10,8 +10,9 @@ python src/main_v2.py --split valid --path $path --ignore_under_1sec  \
     --label_algo action_spotting --action_window_size 15 \
     --timing_algo empirical \
     --action_rate_csv "/Users/heste/workspace/soccernet/sn-caption/Benchmarks/TemporallyAwarePooling/data/Additional_Info_Ratios__Before_and_After.csv" \
-    --addinfo_force
-
+    --default_rate 0.18 \
+    --addinfo_force \
+    --only_offplay
 
 << COMMENTOUT
 test 集合での結果

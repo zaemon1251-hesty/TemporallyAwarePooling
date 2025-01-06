@@ -30,7 +30,7 @@ class MainV2Argument(Tap):
     )
 
     # ラベル生成
-    default_rate = 0.18
+    default_rate: float = 0.18
     label_algo: str = "constant"
     action_spotting_label_csv: str = (
         "/Users/heste/workspace/soccernet/sn-script/database/misc/soccernet_spotting_labels.csv"
@@ -40,6 +40,7 @@ class MainV2Argument(Tap):
     )
     action_window_size: float = 15
     addinfo_force: bool = False
+    only_offplay: bool = False
 
     seed: int = 12
 
@@ -108,6 +109,20 @@ class SpottingModel:
         self.action_rate_df = pl.read_csv(args.action_rate_csv)
         self.action_window_size = args.action_window_size
         self.addinfo_force = args.addinfo_force
+        self.offplay_events_a = [
+            "Foul",
+            "Goal",
+            "Penalty",
+            "Red card",
+            "Yellow card",
+            "Yellow->red card",
+            "Substitution",
+            "Offside",
+            "Shots on target",
+            "Ball out of play",
+        ]
+        self.offplay_events_b = ["Kick-off"]
+        self.only_offplay = args.only_offplay
 
         self.lognorm_params = args.lognorm_params
         self.gamma_params = args.gamma_params
@@ -171,47 +186,62 @@ class SpottingModel:
 
         if self.label_algo == "constant":
             next_label = np.random.choice(self.label_space, p=self.label_prob)
-        elif self.label_algo == "action_spotting":
-            label_result = self.action_df.filter(
-                (self.action_df["game"] == game)
-                & (self.action_df["half"] == half)
-                & (
-                    self.action_df["time"] <= next_t + self.action_window_size * 0
-                )  # 発話タイミングの未来のアクションは考慮しない
-                & (self.action_df["time"] >= next_t - self.action_window_size * 1)
-            )
+            return next_label
 
-            if len(label_result) == 0:
-                label_prob = self.label_prob
-            else:
-                # polars 行アクセス
-                # 最も self.action_df["time"]とnext_tが近い行を取得
-                nearest_action_row = label_result.row(0, named=True)
-                nearest_label = nearest_action_row["label"]
-                is_before = next_t < nearest_action_row["time"]
-                action_rate_result = self.action_rate_df.filter(
-                    (self.action_rate_df["label"] == nearest_label)
-                )
+        assert self.label_algo == "action_spotting"
 
-                if len(action_rate_result) == 0:
-                    label_prob = self.label_prob
-                else:
-                    # labelの 前(rate_before) or 後(rate_after) の付加的情報の割合
-                    col_suffix = "before" if is_before else "after"
-                    addinfo_rate = action_rate_result.row(0, named=True)[
-                        f"rate_{col_suffix}"
-                    ]
-                    assert 0 <= addinfo_rate <= 1
+        label_result = self.action_df.filter(
+            (self.action_df["game"] == game)
+            & (self.action_df["half"] == half)
+            & (
+                self.action_df["time"] <= next_t + self.action_window_size * 0
+            )  # 発話タイミングの未来のアクションは考慮しない
+            & (self.action_df["time"] >= next_t - self.action_window_size * 1)
+        )
 
-                    # 付加的情報の割合が高い(アクション,前後)場合、付加的情報とする
-                    if args.addinfo_force and addinfo_rate > 0.18:
-                        addinfo_rate = 1.0
-                    elif args.addinfo_force and addinfo_rate <= 0.18:
-                        addinfo_rate = 0.0
-                    label_prob = [1 - addinfo_rate, addinfo_rate]
+        if len(label_result) == 0:
+            label_prob = self.label_prob
+            next_label = np.random.choice(self.label_space, p=self.label_prob)
+            return next_label
 
-            # ラベルを生成
-            next_label = np.random.choice(self.label_space, p=label_prob)
+        # polars 行アクセス
+        # 最も self.action_df["time"]とnext_tが近い行を取得
+        nearest_action_row = label_result.row(0, named=True)
+        nearest_label = nearest_action_row["label"]
+        is_before = next_t < nearest_action_row["time"]
+        action_rate_result = self.action_rate_df.filter(
+            (self.action_rate_df["label"] == nearest_label)
+        )
+
+        if nearest_label in self.offplay_events_b:
+            # Kick-off は常に付加的情報
+            next_label = 1
+            return next_label
+
+        # 未来のアクションは考慮しない
+        # out of play eventのみ
+        if (
+            is_before
+            or len(action_rate_result) == 0
+            or (self.only_offplay and nearest_label not in self.offplay_events_a)
+        ):
+            next_label = np.random.choice(self.label_space, p=self.label_prob)
+            return next_label
+
+        # labelの 前(rate_before) or 後(rate_after) の付加的情報の割合
+        col_suffix = "before" if is_before else "after"
+        addinfo_rate = action_rate_result.row(0, named=True)[f"rate_{col_suffix}"]
+        assert 0 <= addinfo_rate <= 1
+
+        # 付加的情報の割合が高い(アクション,前後)場合、付加的情報とする
+        if args.addinfo_force and addinfo_rate > 0.18:
+            addinfo_rate = 1.0
+        elif args.addinfo_force and addinfo_rate <= 0.18:
+            pass
+
+        # ラベルを生成
+        label_prob = [1 - addinfo_rate, addinfo_rate]
+        next_label = np.random.choice(self.label_space, p=label_prob)
         return next_label
 
 
