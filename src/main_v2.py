@@ -118,7 +118,6 @@ class SpottingModel:
             "Yellow->red card",
             "Substitution",
             "Offside",
-            "Shots on target",
             "Ball out of play",
         ]
         self.offplay_events_b = ["Kick-off"]
@@ -176,6 +175,8 @@ class SpottingModel:
                 p=self.silence_dist["p"].to_numpy(),
             )
             next_ts = previous_t + delta_t
+        else:
+            raise ValueError(f"{self.timing_algo} is not supported")
         return next_ts
 
     def _next_label(self, game, half, next_t):
