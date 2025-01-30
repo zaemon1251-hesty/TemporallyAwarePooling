@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataset import CommentaryClipsForDiffEstimation
 import polars as pl
 import numpy as np
@@ -25,9 +26,7 @@ class MainV2Argument(Tap):
     gamma_params: dict = {"shape": 0.3283, "loc": 0.0, "scale": 6.4844}
     expon_params: dict = {"loc": 0.0, "scale": 2.1289}
     ignore_under_1sec: bool = False
-    empirical_dist_csv: str = (
-        "/Users/heste/workspace/soccernet/sn-caption/Benchmarks/TemporallyAwarePooling/data/silence_distribution_over_1sec.csv"
-    )
+    empirical_dist_csv: str = None
 
     # ラベル生成
     default_rate: float = 0.18
@@ -35,9 +34,7 @@ class MainV2Argument(Tap):
     action_spotting_label_csv: str = (
         "/Users/heste/workspace/soccernet/sn-script/database/misc/soccernet_spotting_labels.csv"
     )
-    action_rate_csv: str = (
-        "/Users/heste/workspace/soccernet/sn-caption/Benchmarks/TemporallyAwarePooling/data/Additional_Info_Ratios__Before_and_After.csv"
-    )
+    action_rate_csv: str = None
     action_window_size: float = 15
     addinfo_force: bool = False
     only_offplay: bool = False
@@ -104,9 +101,17 @@ class SpottingModel:
         self.timing_algo = args.timing_algo
         self.label_algo = args.label_algo
 
-        self.action_df = pl.read_csv(args.action_spotting_label_csv)
-        self.action_df = preprocess_action_df(self.action_df)
-        self.action_rate_df = pl.read_csv(args.action_rate_csv)
+        if args.action_spotting_label_csv is not None:
+            self.action_df = pl.read_csv(args.action_spotting_label_csv)
+            self.action_df = preprocess_action_df(self.action_df)
+        else:
+            self.action_df = None
+
+        if args.action_rate_csv is not None:
+            self.action_rate_df = pl.read_csv(args.action_rate_csv)
+        else:
+            self.action_rate_df = None
+
         self.action_window_size = args.action_window_size
         self.addinfo_force = args.addinfo_force
         self.offplay_events_a = [
