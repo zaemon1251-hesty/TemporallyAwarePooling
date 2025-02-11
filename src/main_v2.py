@@ -240,9 +240,9 @@ class SpottingModel:
         assert 0 <= addinfo_rate <= 1
 
         # 付加的情報の割合が高い(アクション,前後)場合、付加的情報とする
-        if args.addinfo_force and addinfo_rate > 0.18:
+        if self.addinfo_force and addinfo_rate > 0.18:
             addinfo_rate = 1.0
-        elif args.addinfo_force and addinfo_rate <= 0.18:
+        elif self.addinfo_force and addinfo_rate <= 0.18:
             pass
 
         # ラベルを生成
